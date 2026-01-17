@@ -134,6 +134,7 @@ static int parse_int_arg(const char* s, const char* name) {
     return (int)v;
 }
 
+
 int main(int argc, char** argv) {
     // Defaults chosen so speedup is visible.
     // You can pass custom size: sobel_compare.exe <height> <width>
@@ -143,9 +144,22 @@ int main(int argc, char** argv) {
     if (argc >= 2) height = parse_int_arg(argv[1], "height");
     if (argc >= 3) width  = parse_int_arg(argv[2], "width");
 
+    // FORCE EXACTLY 2 THREADS
+    omp_set_num_threads(2);
+
     const bool should_print = (height <= 16 && width <= 16);
 
-    auto image = make_input(height, width);
+    std::vector<std::vector<int>> image(height, std::vector<int>(width));
+
+  
+    #pragma omp parallel for collapse(2) schedule(static)
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            int base = (i + j) * 10;
+            int wiggle = (int)(20 * sin(i * 0.05) + 20 * cos(j * 0.05));
+            image[i][j] = base + wiggle;
+        }
+    }
 
     std::vector<std::vector<int>> out_seq(height, std::vector<int>(width, 0));
     std::vector<std::vector<int>> out_omp(height, std::vector<int>(width, 0));
@@ -158,15 +172,16 @@ int main(int argc, char** argv) {
         std::cout << "INPUT IMAGE size: " << height << "x" << width << "\n";
     }
 
-    // --- Sequential ---
+
     double t0 = omp_get_wtime();
     sobel_sequential(image, out_seq);
     double t1 = omp_get_wtime();
 
-    // --- Parallel (OpenMP) ---
+
     double t2 = omp_get_wtime();
     sobel_openmp(image, out_omp);
     double t3 = omp_get_wtime();
+
 
     int bi = -1, bj = -1;
     bool ok = outputs_equal(out_seq, out_omp, bi, bj);
@@ -182,6 +197,7 @@ int main(int argc, char** argv) {
     std::cout << std::fixed << std::setprecision(6);
     const double seq_s = (t1 - t0);
     const double omp_s = (t3 - t2);
+
     std::cout << "Sequential time: " << seq_s << " s\n";
     std::cout << "OpenMP time:     " << omp_s << " s\n";
 
@@ -190,16 +206,84 @@ int main(int argc, char** argv) {
     }
 
     if (!ok) {
-        std::cerr << "ERROR: outputs do NOT match. First mismatch at (" << bi << ", " << bj
-                  << ") seq=" << out_seq[bi][bj] << " omp=" << out_omp[bi][bj] << "\n";
+        std::cerr << "ERROR: outputs do NOT match. First mismatch at ("
+                  << bi << ", " << bj << ")\n";
         return 1;
     }
 
     std::cout << "Correctness check: PASS (outputs match)\n";
 
-    std::cout << "\nTip: control threads with OMP_NUM_THREADS, e.g.\n"
-                 "  set OMP_NUM_THREADS=8\n"
-                 "  sobel_compare.exe\n";
-
     return 0;
 }
+
+
+// int main(int argc, char** argv) {
+//     // Defaults chosen so speedup is visible.
+//     // You can pass custom size: sobel_compare.exe <height> <width>
+//     int height = 2048;
+//     int width  = 2048;
+
+//     if (argc >= 2) height = parse_int_arg(argv[1], "height");
+//     if (argc >= 3) width  = parse_int_arg(argv[2], "width");
+
+//     const bool should_print = (height <= 16 && width <= 16);
+
+//     auto image = make_input(height, width);
+
+//     std::vector<std::vector<int>> out_seq(height, std::vector<int>(width, 0));
+//     std::vector<std::vector<int>> out_omp(height, std::vector<int>(width, 0));
+
+//     if (should_print) {
+//         std::cout << "INPUT IMAGE (" << height << "x" << width << "):\n";
+//         print_image(image);
+//         std::cout << "\n";
+//     } else {
+//         std::cout << "INPUT IMAGE size: " << height << "x" << width << "\n";
+//     }
+
+//     // --- Sequential ---
+//     double t0 = omp_get_wtime();
+//     sobel_sequential(image, out_seq);
+//     double t1 = omp_get_wtime();
+
+//     // --- Parallel (OpenMP) ---
+//     double t2 = omp_get_wtime();
+//     sobel_openmp(image, out_omp);
+//     double t3 = omp_get_wtime();
+
+//     int bi = -1, bj = -1;
+//     bool ok = outputs_equal(out_seq, out_omp, bi, bj);
+
+//     if (should_print) {
+//         std::cout << "OUTPUT (Sequential):\n";
+//         print_image(out_seq);
+//         std::cout << "\nOUTPUT (OpenMP):\n";
+//         print_image(out_omp);
+//         std::cout << "\n";
+//     }
+
+//     std::cout << std::fixed << std::setprecision(6);
+//     const double seq_s = (t1 - t0);
+//     const double omp_s = (t3 - t2);
+//     std::cout << "Sequential time: " << seq_s << " s\n";
+//     std::cout << "OpenMP time:     " << omp_s << " s\n";
+
+//     if (omp_s > 0) {
+//         std::cout << "Speedup (seq/omp): " << (seq_s / omp_s) << "x\n";
+//     }
+
+//     if (!ok) {
+//         std::cerr << "ERROR: outputs do NOT match. First mismatch at (" << bi << ", " << bj
+//                   << ") seq=" << out_seq[bi][bj] << " omp=" << out_omp[bi][bj] << "\n";
+//         return 1;
+//     }
+
+//     std::cout << "Correctness check: PASS (outputs match)\n";
+
+//     std::cout << "\nTip: control threads with OMP_NUM_THREADS, e.g.\n"
+//                  "  set OMP_NUM_THREADS=8\n"
+//                  "  sobel_compare.exe\n";
+
+//     return 0;
+// }
+
